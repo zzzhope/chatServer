@@ -6,3 +6,5 @@ cd build
 rm -rf *
 cmake ..
 make
+
+需要nginx tcp的负载均衡
