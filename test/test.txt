@@ -1,0 +1,9 @@
+{"msgid":1,"id":22,"password":"123456"}
+{"msgid":1,"id":23,"password":"12345678"}
+
+{"msgid":3,"name":"li si","password":"12345678"}
+
+{"msgid":5,"id":22,"from":"zhang san","to":23,"msg":"hello123"}
+{"msgid":5,"id":23,"from":"li si","to":22,"msg":"fuck you"}
+
+{"msgid":6,"id":22,"friendid":23}
