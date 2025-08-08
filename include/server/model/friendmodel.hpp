@@ -14,6 +14,9 @@ public:
 
     // 返回用户好友列表
     vector<User> query(int userId);
+
+    // 查询是否为好友
+    bool isFriend(int userId, int friendId);
 };
 
 #endif

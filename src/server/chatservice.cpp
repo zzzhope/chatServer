@@ -27,6 +27,7 @@ ChatService::ChatService()
     _msgHandlerMap.insert({CREATE_GROUP_MSG, std::bind(&ChatService::createGroup, this, _1, _2, _3)});
     _msgHandlerMap.insert({ADD_GROUP_MSG, std::bind(&ChatService::addGroup, this, _1, _2, _3)});
     _msgHandlerMap.insert({GROUP_CHAT_MSG, std::bind(&ChatService::groupChat, this, _1, _2, _3)});
+    _msgHandlerMap.insert({CHANGE_PWD_MSG, std::bind(&ChatService::changePwd, this, _1, _2, _3)});
 
     // 连接Redis服务器
     if (_redis.connect())
@@ -190,7 +191,31 @@ void ChatService::reg(const TcpConnectionPtr &conn, json &js, Timestamp time)
 // msgid   id   name   to   msg
 void ChatService::oneChat(const TcpConnectionPtr &conn, json &js, Timestamp time)
 {
+    int fromId = js["id"].get<int>();
     int toId = js["to"].get<int>();
+
+    // 先检查目标用户是否存在
+    User user = _userModel.query(toId);
+    if (user.getId() == -1) // 用户不存在
+    {
+        json response;
+        response["msgid"] = ONE_CHAT_MSG_ACK;
+        response["errno"] = 1;
+        response["errmsg"] = "target user doesn't exist!";
+        conn->send(response.dump());
+        return;
+    }
+
+    // 检查是否为好友关系
+    if (!_friendModel.isFriend(fromId, toId))
+    {
+        json response;
+        response["msgid"] = ONE_CHAT_MSG_ACK;
+        response["errno"] = 2;
+        response["errmsg"] = "target user is not your friend!";
+        conn->send(response.dump());
+        return;
+    }
 
     // 只有对_userConnMap进行操作时才需要加互斥锁
     {
@@ -206,7 +231,6 @@ void ChatService::oneChat(const TcpConnectionPtr &conn, json &js, Timestamp time
     }
 
     // 查询toid是否在线
-    User user = _userModel.query(toId);
     if (user.getState() == "online") // 在线说明不在同一个服务器主机
     {
         _redis.publish(toId, js.dump());
@@ -223,6 +247,18 @@ void ChatService::addFriend(const TcpConnectionPtr &conn, json &js, Timestamp ti
 {
     int userId = js["id"].get<int>();
     int friendId = js["friendid"].get<int>();
+
+    // 检查要添加的好友是否存在
+    User friendUser = _userModel.query(friendId);
+    if (friendUser.getId() == -1) // 好友不存在
+    {
+        json response;
+        response["msgid"] = ADD_FRIEND_MSG_ACK;
+        response["errno"] = 1;
+        response["errmsg"] = "the target user doesn't exist";
+        conn->send(response.dump());
+        return;
+    }
 
     // 存储好友信息
     _friendModel.insert(userId, friendId);
@@ -321,10 +357,50 @@ void ChatService::groupChat(const TcpConnectionPtr &conn, json &js, Timestamp ti
                 // 不在线，存储离线消息
                 _offlineMsgModel.insert(id, js.dump());
             }
-
-            // 存储离线消息
-            _offlineMsgModel.insert(id, js.dump());
         }
+    }
+}
+
+// 修改密码业务
+// msgid   id   oldmessage   newmessage
+void ChatService::changePwd(const TcpConnectionPtr &conn, json &js, Timestamp time)
+{
+    int userid = js["id"].get<int>();
+    string oldpassword = js["oldpassword"];
+    string newpassword = js["newpassword"];
+
+    User user = _userModel.query(userid);
+    if (user.getPwd() != oldpassword)
+    {
+        // 旧密码错误
+        json response;
+        response["msgid"] = CHANGE_PWD_MSG_ACK;
+        response["id"] = userid;
+        response["errno"] = 1;
+        response["errmsg"] = "the old password is wrong!";
+        conn->send(response.dump());
+        return;
+    }
+
+    if (_userModel.updatePassword(userid, newpassword))
+    {
+        // 密码修改成功
+        json response;
+        response["msgid"] = CHANGE_PWD_MSG_ACK;
+        response["id"] = userid;
+        response["errno"] = 0;
+        response["errmsg"] = "successfully change the password!";
+        conn->send(response.dump());
+    }
+    else
+    {
+        // 密码修改失败
+        json response;
+        response["msgid"] = CHANGE_PWD_MSG_ACK;
+        response["id"] = userid;
+        response["errno"] = 2;
+        response["errmsg"] = "change the password failed!";
+        conn->send(response.dump());
     }
 }
 

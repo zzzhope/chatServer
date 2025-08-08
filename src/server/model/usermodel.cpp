@@ -87,3 +87,21 @@ void UserModel::resetState()
         mysql.update(sql);
     }
 }
+
+// 更新用户密码
+bool UserModel::updatePassword(int userid, const string &password)
+{
+    char sql[1024] = {0};
+    sprintf(sql, "update user set password= '%s' where id = %d", password.c_str(), userid);
+
+    MySQL mysql;
+    if (mysql.connect())
+    {
+        if (mysql.update(sql))
+        {
+
+            return true;
+        }
+    }
+    return false;
+}

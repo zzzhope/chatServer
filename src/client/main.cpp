@@ -52,29 +52,6 @@ int main(int argc, char **argv)
     char *ip = argv[1];
     uint16_t port = atoi(argv[2]);
 
-    // // 创建client端的socket
-    // int clientfd = socket(AF_INET, SOCK_STREAM, 0);
-    // if (clientfd == -1)
-    // {
-    //     cerr << "socket create error" << endl;
-    //     exit(-1);
-    // }
-
-    // // 填写client需要连接的server信息ip+port
-    // sockaddr_in server;
-    // memset(&server, 0, sizeof(sockaddr_in));
-    // server.sin_family = AF_INET;
-    // server.sin_port = htons(port);
-    // server.sin_addr.s_addr = inet_addr(ip);
-
-    // // client和server进行连接
-    // if (connect(clientfd, (sockaddr *)&server, sizeof(sockaddr_in)) == -1)
-    // {
-    //     cerr << "connect server error" << endl;
-    //     close(clientfd);
-    //     exit(-1);
-    // }
-
     // main线程用于接收用户的输入，负责发送数据
     for (;;)
     {
@@ -378,15 +355,31 @@ void readTaskHandler(int clientfd)
         // 接受ChatServer转发的数据，反序列化生成json数据对象
         json js = json::parse(buffer);
         int msgtype = js["msgid"].get<int>();
-        if (ONE_CHAT_MSG == msgtype)
+        if (msgtype == ONE_CHAT_MSG)
         {
             // time+[id]+name+" said: "+msg
             cout << js["time"].get<string>() << " [" << js["id"] << "] " << js["name"].get<string>() << " said: " << js["msg"].get<string>() << endl;
             continue;
         }
-        if (GROUP_CHAT_MSG == msgtype)
+        if (msgtype == ONE_CHAT_MSG_ACK || msgtype == ADD_FRIEND_MSG_ACK)
+        {
+            // 处理聊天响应消息以及处理添加好友响应消息
+            if (js.contains("errno") && js["errno"].get<int>() != 0)
+                cout << "Error: " << js["errmsg"].get<string>() << endl;
+            continue;
+        }
+        if (msgtype == GROUP_CHAT_MSG)
         {
             cout << "group[" << js["groupid"] << "] message: " << js["time"].get<string>() << " [" << js["id"] << "] " << js["name"].get<string>() << " said: " << js["msg"].get<string>() << endl;
+            continue;
+        }
+        if (msgtype == CHANGE_PWD_MSG_ACK)
+        {
+            // 处理修改密码响应消息
+            if (js["errno"].get<int>() == 0)
+                cout << "successfully change the password!" << endl;
+            else
+                cout << "failed! " << js["errmsg"].get<string>() << endl;
             continue;
         }
     }
@@ -414,6 +407,8 @@ void creategroup(int, string);
 void addgroup(int, string);
 // "groupchat" command handler
 void groupchat(int, string);
+// "changepwd" command handler
+void changepwd(int, string);
 // "quit" command handler
 void logout(int, string);
 
@@ -425,6 +420,7 @@ unordered_map<string, string> commandMap = {
     {"creategroup", "创建群组，格式creategroup:groupname:groupdesc"},
     {"addgroup", "加入群组，格式addgroup:groupid"},
     {"groupchat", "群聊，格式groupchat:groupid:message"},
+    {"changepwd", "群聊，格式changepwd:oldpassword:newpassword"},
     {"logout", "注销，格式logout"}};
 
 // 注册系统支持的客户端命令处理
@@ -435,6 +431,7 @@ unordered_map<string, function<void(int, string)>> commandHandlerMap = {
     {"creategroup", creategroup},
     {"addgroup", addgroup},
     {"groupchat", groupchat},
+    {"changepwd", changepwd},
     {"logout", logout}};
 
 // 主聊天页面程序
@@ -573,7 +570,7 @@ void addgroup(int clientfd, string str)
     int len = send(clientfd, buffer.c_str(), strlen(buffer.c_str()) + 1, 0);
     if (len == -1)
     {
-        cerr << "send addfriend msg error -> " << buffer << endl;
+        cerr << "send addgroup msg error -> " << buffer << endl;
     }
 }
 
@@ -596,6 +593,38 @@ void groupchat(int clientfd, string str)
     js["groupid"] = groupid;
     js["msg"] = message;
     js["time"] = getCurrentTime();
+    string buffer = js.dump();
+
+    int len = send(clientfd, buffer.c_str(), strlen(buffer.c_str()) + 1, 0);
+    if (len == -1)
+    {
+        cerr << "send groupchat msg error -> " << buffer << endl;
+    }
+}
+
+// "changepwd" command handler  groupid:message
+void changepwd(int clientfd, string str)
+{
+    int idx = str.find(":");
+    if (idx == -1)
+    {
+        cerr << "changepwd command invalid!" << endl;
+        return;
+    }
+    string oldpassword = str.substr(0, idx).c_str();
+    string newpassword = str.substr(idx + 1, str.size() - idx);
+
+    if (newpassword.empty())
+    {
+        cerr << "newpassword can't be empty!" << endl;
+        return;
+    }
+
+    json js;
+    js["msgid"] = CHANGE_PWD_MSG;
+    js["id"] = g_currentUser.getId();
+    js["oldpassword"] = oldpassword;
+    js["newpassword"] = newpassword;
     string buffer = js.dump();
 
     int len = send(clientfd, buffer.c_str(), strlen(buffer.c_str()) + 1, 0);

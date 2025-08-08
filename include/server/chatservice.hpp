@@ -43,6 +43,8 @@ public:
     void addGroup(const TcpConnectionPtr &conn, json &js, Timestamp time);
     // 群组聊天业务
     void groupChat(const TcpConnectionPtr &conn, json &js, Timestamp time);
+    // 修改密码业务
+    void changePwd(const TcpConnectionPtr &conn, json &js, Timestamp time);
     // 处理注销业务
     void logout(const TcpConnectionPtr &conn, json &js, Timestamp time);
 

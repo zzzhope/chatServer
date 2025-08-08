@@ -18,6 +18,9 @@ public:
 
     // 重置用户的状态信息
     void resetState();
+
+    // 更新用户密码
+    bool updatePassword(int userid, const string &password);
 };
 
 #endif
